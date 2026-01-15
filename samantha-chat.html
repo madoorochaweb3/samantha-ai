@@ -716,7 +716,10 @@
                     headers: { 'Content-Type': 'application/json' }
                 });
 
-                if (!response.ok) throw new Error('Failed to start chat');
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.details || errorData.error || 'Erro interno no servidor (Vercel)');
+                }
 
                 const data = await response.json();
                 sessionId = data.sessionId;
@@ -728,7 +731,6 @@
                 setStatus('online');
                 addSamanthaMessage(data.response);
 
-                // Inicializa o histórico com a mensagem de saudação da Samantha
                 conversationHistory = [
                     { role: 'model', parts: [{ text: data.response }] }
                 ];
@@ -740,18 +742,7 @@
                 setStatus('error');
                 startChatButton.disabled = false;
                 startChatButton.innerHTML = 'Começar Conversa <span>→</span>';
-
-                // Tenta extrair mensagem de erro detalhada do servidor
-                let errorMsg = 'Erro ao iniciar conversa.';
-                try {
-                    const errorJson = JSON.parse(error.message.replace('Error: ', ''));
-                    if (errorJson.details) errorMsg += `\n\nDetalhes: ${errorJson.details}`;
-                    if (errorJson.hint) errorMsg += `\n\nDica: ${errorJson.hint}`;
-                } catch (e) {
-                    if (error.message) errorMsg += `\n\n${error.message}`;
-                }
-
-                alert(errorMsg);
+                alert(`Erro ao iniciar conversa:\n\n${error.message}`);
             }
         });
 
