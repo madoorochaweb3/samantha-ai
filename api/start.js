@@ -45,7 +45,7 @@ module.exports = async (req, res) => {
         if (openai) {
             try {
                 const completion = await openai.chat.completions.create({
-                    model: "deepseek/deepseek-r1-0528:free",
+                    model: "deepseek/deepseek-chat",
                     messages: [
                         { role: "system", content: SAMANTHA_SYSTEM_PROMPT },
                         { role: "user", content: "Inicie a conversa se apresentando brevemente e pergunte o nome da pessoa." }
