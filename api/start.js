@@ -77,6 +77,18 @@ module.exports = async (req, res) => {
 
         res.json({ response, sessionId, model: usedModel });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error('Error in /api/start:', error);
+
+        // Verifica se é erro de API Key
+        let errorMessage = error.message;
+        if (!process.env.GEMINI_API_KEY && !process.env.DEEPSEEK_API_KEY) {
+            errorMessage = "API Keys não configuradas na Vercel (GEMINI_API_KEY ou DEEPSEEK_API_KEY)";
+        }
+
+        res.status(500).json({
+            error: 'Erro ao iniciar conversa',
+            details: errorMessage,
+            hint: "Verifique as 'Environment Variables' no painel da Vercel."
+        });
     }
 };

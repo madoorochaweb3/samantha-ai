@@ -119,7 +119,11 @@ module.exports = async (req, res) => {
         res.json({ response, isRetrato, retratoData, sessionId, model: usedModel });
 
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: 'Erro no processamento', details: error.message });
+        console.error('Error in /api/chat:', error);
+        res.status(500).json({
+            error: 'Erro no processamento da mensagem',
+            details: error.message,
+            hint: "Verifique os logs da Vercel ou as chaves de API."
+        });
     }
 };

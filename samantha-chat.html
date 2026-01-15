@@ -727,12 +727,12 @@
 
                 setStatus('online');
                 addSamanthaMessage(data.response);
-                
+
                 // Inicializa o histórico com a mensagem de saudação da Samantha
                 conversationHistory = [
                     { role: 'model', parts: [{ text: data.response }] }
                 ];
-                
+
                 messageInput.focus();
 
             } catch (error) {
@@ -740,7 +740,18 @@
                 setStatus('error');
                 startChatButton.disabled = false;
                 startChatButton.innerHTML = 'Começar Conversa <span>→</span>';
-                alert('Erro ao iniciar conversa. Por favor, tente novamente.');
+
+                // Tenta extrair mensagem de erro detalhada do servidor
+                let errorMsg = 'Erro ao iniciar conversa.';
+                try {
+                    const errorJson = JSON.parse(error.message.replace('Error: ', ''));
+                    if (errorJson.details) errorMsg += `\n\nDetalhes: ${errorJson.details}`;
+                    if (errorJson.hint) errorMsg += `\n\nDica: ${errorJson.hint}`;
+                } catch (e) {
+                    if (error.message) errorMsg += `\n\n${error.message}`;
+                }
+
+                alert(errorMsg);
             }
         });
 
