@@ -8,6 +8,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500&family=Lora:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500&display=swap"
         rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -681,6 +682,26 @@
         let userName = '';
         let isLoading = false;
         let conversationHistory = [];
+        let preloadedData = null;
+        let preloadingPromise = null;
+
+        // Preload the "soul" (greeting) immediately
+        async function preloadSamantha() {
+            try {
+                console.log("✧ Preloading Samantha...");
+                const response = await fetch(`${API_BASE}/api/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!response.ok) throw new Error('Falha no pre-load');
+                preloadedData = await response.json();
+                console.log("✧ Samantha is ready and waiting.");
+            } catch (error) {
+                console.warn("✧ Preload failed:", error);
+            }
+        }
+
+        preloadingPromise = preloadSamantha();
 
         // Update status indicator
         function setStatus(status) {
@@ -707,32 +728,36 @@
         // Start chat
         startChatButton.addEventListener('click', async () => {
             startChatButton.disabled = true;
-            startChatButton.innerHTML = 'Iniciando... <span class="loading-dots">...</span>';
+            startChatButton.innerHTML = 'Conectando... <span class="loading-dots">...</span>';
             setStatus('connecting');
 
             try {
-                const response = await fetch(`${API_BASE}/api/start`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.details || errorData.error || 'Erro interno no servidor (Vercel)');
+                // Wait for the preload to finish if it hasn't already
+                if (!preloadedData) {
+                    await preloadingPromise;
                 }
 
-                const data = await response.json();
-                sessionId = data.sessionId;
+                // If still no data (error in preload), try one last time synchronously
+                if (!preloadedData) {
+                    const response = await fetch(`${API_BASE}/api/start`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    if (!response.ok) throw new Error('Erro ao conectar com Samantha');
+                    preloadedData = await response.json();
+                }
+
+                sessionId = preloadedData.sessionId;
 
                 welcomeScreen.classList.add('hidden');
                 chatContainer.classList.remove('hidden');
                 inputArea.classList.remove('hidden');
 
                 setStatus('online');
-                addSamanthaMessage(data.response);
+                addSamanthaMessage(preloadedData.response);
 
                 conversationHistory = [
-                    { role: 'model', parts: [{ text: data.response }] }
+                    { role: 'model', parts: [{ text: preloadedData.response }] }
                 ];
 
                 messageInput.focus();
@@ -742,7 +767,7 @@
                 setStatus('error');
                 startChatButton.disabled = false;
                 startChatButton.innerHTML = 'Começar Conversa <span>→</span>';
-                alert(`Erro ao iniciar conversa:\n\n${error.message}`);
+                alert(`Samantha está descansando agora. Tente de novo em alguns segundos! 🦋\n\nErro: ${error.message}`);
             }
         });
 
@@ -843,10 +868,19 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message message-samantha';
 
-            // Clean up any code blocks or JSON that might have leaked
+            // Clean up R1 <think> blocks and extra text if JSON is present
             let cleanText = text;
-            if (text.includes('```json')) {
-                cleanText = 'Preparando seu retrato...';
+
+            // Remove <think>...</think> blocks if present
+            cleanText = cleanText.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
+            if (cleanText.includes('```json')) {
+                // If there's a JSON block, we might want to hide the raw text or show a placeholder
+                // But the caller addRetratoMessage will handle the card rendering.
+                // We'll just show the text before/after the JSON if needed, or a placeholder.
+                if (cleanText.match(/\{[\s\S]*"tipo":\s*"retrato"[\s\S]*\}/)) {
+                    cleanText = 'Preparei o seu retrato com base na nossa conversa. ✧';
+                }
             }
 
             messageDiv.innerHTML = `
@@ -991,7 +1025,10 @@
         }
 
         function formatText(text) {
-            // Basic text formatting - escape HTML and convert line breaks
+            if (typeof marked !== 'undefined') {
+                return marked.parse(text);
+            }
+            // Fallback basic text formatting
             return text
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
