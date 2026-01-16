@@ -23,11 +23,12 @@ module.exports = async (req, res) => {
         }
 
         const completion = await openai.chat.completions.create({
-            model: "deepseek/deepseek-r1:free",
+            model: "deepseek/deepseek-chat", // DeepSeek V3 is much faster for the initial greeting
             messages: [
                 { role: "system", content: SAMANTHA_SYSTEM_PROMPT },
                 { role: "user", content: "Inicie a conversa se apresentando brevemente e pergunte o nome da pessoa." }
-            ]
+            ],
+            max_tokens: 150 // Keep it short and fast
         });
 
         const response = completion.choices[0].message.content;
