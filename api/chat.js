@@ -1,13 +1,11 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
 const { SAMANTHA_SYSTEM_PROMPT } = require('./lib/samantha');
 const { supabase } = require('./lib/db');
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY;
 
 let openai = null;
-if (DEEPSEEK_KEY && !DEEPSEEK_KEY.startsWith('sk-f27')) {
+if (DEEPSEEK_KEY) {
     openai = new OpenAI({
         apiKey: DEEPSEEK_KEY,
         baseURL: 'https://openrouter.ai/api/v1',
@@ -16,24 +14,6 @@ if (DEEPSEEK_KEY && !DEEPSEEK_KEY.startsWith('sk-f27')) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function callGemini(chatSession, message, maxRetries = 3) {
-    let retryCount = 0;
-    while (retryCount <= maxRetries) {
-        try {
-            const result = await chatSession.sendMessage(message);
-            return result.response.text();
-        } catch (error) {
-            const isRateLimit = error.message && (error.message.includes('429') || error.message.includes('Quota exceeded'));
-            if (isRateLimit && retryCount < maxRetries) {
-                retryCount++;
-                await delay(2000 * retryCount);
-                continue;
-            }
-            throw error;
-        }
-    }
-}
-
 module.exports = async (req, res) => {
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
@@ -41,43 +21,27 @@ module.exports = async (req, res) => {
         const { message, history, sessionId } = req.body;
         if (!message) return res.status(400).json({ error: 'Message required' });
 
+        if (!openai) {
+            throw new Error('DEEPSEEK_API_KEY não configurada no servidor.');
+        }
+
         let response;
-        let usedModel = "gemini";
+        const conversationHistory = (history || []).map(item => ({
+            role: item.role === 'model' ? 'assistant' : 'user',
+            content: item.parts[0].text
+        }));
 
-        // DeepSeek via OpenRouter (Prioridade)
-        if (openai) {
-            try {
-                const conversationHistory = (history || []).map(item => ({
-                    role: item.role === 'model' ? 'assistant' : 'user',
-                    content: item.parts[0].text
-                }));
+        const completion = await openai.chat.completions.create({
+            model: "deepseek/deepseek-chat",
+            messages: [
+                { role: "system", content: SAMANTHA_SYSTEM_PROMPT },
+                ...conversationHistory,
+                { role: "user", content: message }
+            ],
+            max_tokens: 1500
+        });
 
-                const completion = await openai.chat.completions.create({
-                    model: "deepseek/deepseek-chat",
-                    messages: [
-                        { role: "system", content: SAMANTHA_SYSTEM_PROMPT },
-                        ...conversationHistory,
-                        { role: "user", content: message }
-                    ],
-                    max_tokens: 1500
-                });
-                response = completion.choices[0].message.content;
-                usedModel = "deepseek";
-            } catch (e) {
-                console.log("DeepSeek failed, falling back to Gemini.");
-                openai = null;
-            }
-        }
-
-        // Gemini Fallback
-        if (!response) {
-            const model = genAI.getGenerativeModel({
-                model: 'gemini-2.0-flash',
-                systemInstruction: SAMANTHA_SYSTEM_PROMPT
-            });
-            const chat = model.startChat({ history: history || [] });
-            response = await callGemini(chat, message);
-        }
+        response = completion.choices[0].message.content;
 
         // Extract JSON for the Retrato
         let isRetrato = false;
@@ -116,14 +80,14 @@ module.exports = async (req, res) => {
             }
         }
 
-        res.json({ response, isRetrato, retratoData, sessionId, model: usedModel });
+        res.json({ response, isRetrato, retratoData, sessionId, model: "deepseek" });
 
     } catch (error) {
         console.error('Error in /api/chat:', error);
         res.status(500).json({
-            error: 'Erro no processamento da mensagem',
+            error: 'Erro no DeepSeek',
             details: error.message,
-            hint: "Verifique os logs da Vercel ou as chaves de API."
+            hint: "Verifique a chave DEEPSEEK_API_KEY ou créditos no OpenRouter."
         });
     }
 };
